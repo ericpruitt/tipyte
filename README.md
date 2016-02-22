@@ -1,10 +1,10 @@
 Tipyte: Tiny Python Templating Engine
 =====================================
 
-Tipyte (pronounced "tippity") is a Python templating engine that supports
-Python versions 2.7 and 3.0+. The syntax used for Tipyte is almost pure Python
-with a small amount of syntactic sugar to keep the templates from being
-whitespace sensitive and three template-specific built-in functions.
+Tipyte (pronounced "tippity") is a BSD-licensed Python templating engine that
+supports Python versions 2.7 and 3.0+. The syntax used for Tipyte is almost
+pure Python with a small amount of syntactic sugar to keep the templates from
+being whitespace sensitive and three template-specific built-in functions.
 
 Tags
 ----
