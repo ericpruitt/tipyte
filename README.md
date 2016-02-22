@@ -6,6 +6,13 @@ supports Python versions 2.7 and 3.0+. The syntax used for Tipyte is almost
 pure Python with a small amount of syntactic sugar to keep the templates from
 being whitespace sensitive and three template-specific built-in functions.
 
+Although Tipyte templates look suspiciously like
+[Jinja](http://jinja.pocoo.org/) templates, the most significant difference is
+that Tipyte leans almost entirely on Python for its syntax. Tipyte has no
+built-in operator overloading which means developers can use normal function
+calls instead of pipes ("|"), and the vast majority of Python syntax works
+within Tipyte out of the box which gives it a softer learning curve.
+
 Tags
 ----
 
