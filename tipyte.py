@@ -28,7 +28,7 @@ else:
 __all__ = [
     "OPEN_TAGS", "CLOSE_TAGS", "CAPTURE_BLOCKS", "CAPTURE_EXPRESSION",
     "CAPTURE_REGEX", "END_BLOCK_EXPRESSION_REGEX", "BLOCK_EXPRESSION_REGEX",
-    "TEMPLATE_PATH_PREFIX", "WHITESPACE_BYTES", "SCRIPT_PATH", "SCRIPT_DIR",
+    "TEMPLATE_PATH_PREFIX", "WHITESPACE_BYTES", "SCRIPT_PATH",
     "compile_template", "template_traceback", "template_to_function",
     "html_escape"
 ]
@@ -62,7 +62,6 @@ TEMPLATE_PATH_PREFIX = "/._/python-templates/"
 WHITESPACE_BYTES = frozenset(b" \t\n\r\x0b\x0c") | {32, 8, 9, 10, 11, 12, 13}
 
 SCRIPT_PATH = os.path.abspath(__file__)
-SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
 
 
 @lru_cache()
@@ -434,8 +433,7 @@ def template_traceback(templates_only=False):
             frames.append((path, lineno, call, text))
 
         elif not templates_only:
-            module_path = os.path.join(SCRIPT_DIR, path)
-            if not os.path.samefile(module_path, SCRIPT_PATH):
+            if not os.path.samefile(path, SCRIPT_PATH):
                 frames.append(frame)
 
         trace = trace.tb_next
