@@ -55,7 +55,7 @@ CAPTURE_REGEX = re.compile(
 
 END_BLOCK_EXPRESSION_REGEX = re.compile("end(for|while|if|with|try)$")
 BLOCK_EXPRESSION_REGEX = re.compile(
-    "(for|while|(el)?if|with)\s|(try|else)\s*:?|except(\s*:|\s)"
+    "(for|while|(el)?if|with)\s|(try|else|finally)\s*:?|except(\s*:|\s)"
 )
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
@@ -124,7 +124,7 @@ def compile_template(path):
                 if BLOCK_EXPRESSION_REGEX.match(contents):
                     if not contents.endswith(":"):
                         contents += ":"
-                    if contents.startswith(("elif", "else", "except")):
+                    if contents.startswith(("elif", "else", "except", "finally")):
                         depth -= 1
                     else:
                         block_name = contents.split()[0]
