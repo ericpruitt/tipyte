@@ -285,10 +285,10 @@ def template_to_function(path, escaper=html_escape):
                 directory of the calling template. Note that this function does
                 not return the included data.
                 """
+                path = os.path.join(template_directory, path)
                 if raw:
                     if escaper:
                         raise ValueError("Cannot set escaper when raw=False.")
-                    path = os.path.join(template_directory, path)
                     with open(path) as iostream:
                         contents = iostream.read()
                     symbols["_template_output"].append(contents)
