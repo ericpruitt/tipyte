@@ -203,7 +203,7 @@ def compile_template(path):
             # the line number in the exception is decremented until a line
             # that's actually in the map is found.
             if e_lineno in span_map:
-                error.lineno, true_offset = span_map[e_lineno]
+                error.lineno, true_offset, _ = span_map[e_lineno]
                 nl = template_source.index(b"\n", true_offset)
                 nl = None if nl < 0 else nl
                 error.text = template_source[true_offset:nl].decode("utf-8")
