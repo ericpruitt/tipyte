@@ -328,7 +328,7 @@ def template_to_function(path, escaper=html_escape):
             })
 
         try:
-            exec(compiled_template, dict(), symbols)
+            exec(compiled_template, symbols)
             output = "".join(symbols["_template_output"])
             if not is_include_call:
                 del symbols["_template_span_map"]
