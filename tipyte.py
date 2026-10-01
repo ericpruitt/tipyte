@@ -1,77 +1,61 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 import collections
+import functools
+import html
 import os
 import re
 import sys
 import traceback
 
-if sys.version_info >= (3, 2):
-    from functools import lru_cache
-    from html import escape as html_escape
+from html import escape as html_escape
 
-else:
-    from xml.sax.saxutils import escape as _html_escape
-    lru_cache = lambda *args, **kwargs: lambda f: f
-
-    HTML_ESCAPE_TABLE = {
-        "'": "&apos;",
-        '"': "&quot;",
-    }
-    def html_escape(text):
-        """
-        Replace special characters '"', "'", "&", "<" and ">" to make text
-        HTML-safe.
-        """
-        return _html_escape(text, HTML_ESCAPE_TABLE)
 
 __all__ = [
     "OPEN_TAGS", "CLOSE_TAGS", "CAPTURE_BLOCKS", "CAPTURE_EXPRESSION",
     "CAPTURE_REGEX", "END_BLOCK_EXPRESSION_REGEX", "BLOCK_EXPRESSION_REGEX",
-    "TEMPLATE_PATH_PREFIX", "WHITESPACE_BYTES", "SCRIPT_PATH",
+    "TEMPLATE_PATH_PREFIX", "WHITESPACE_CHARS", "SCRIPT_PATH",
     "compile_template", "template_traceback", "template_to_function",
     "html_escape"
 ]
 
 OPEN_TAGS = [
-    "(?:{{|\s*{{-) ",
-    "(?:{%|\s*{%-) ",
-    "(?:{=|\s*{=-) ",
-    "(?:{#|\s*{#-) ",
+    r"(?:{{|\s*{{-) ",
+    r"(?:{%|\s*{%-) ",
+    r"(?:{=|\s*{=-) ",
+    r"(?:{#|\s*{#-) ",
 ]
 CLOSE_TAGS = [
-    " (?:}}|-}}\s*)",
-    " (?:%}|-%}\s*)",
-    " (?:=}|-=}\s*)",
-    " (?:#}|-#}\s*)",
+    r" (?:}}|-}}\s*)",
+    r" (?:%}|-%}\s*)",
+    r" (?:=}|-=}\s*)",
+    r" (?:#}|-#}\s*)",
 ]
 
 CAPTURE_BLOCKS = (opn + ".*?" + cls for opn, cls in zip(OPEN_TAGS, CLOSE_TAGS))
-CAPTURE_EXPRESSION = "(.*?)(%s)(.*?)|(.+?)\Z" % ("|".join(CAPTURE_BLOCKS),)
-CAPTURE_REGEX = re.compile(
-    CAPTURE_EXPRESSION.encode("utf-8"),
-    re.MULTILINE | re.DOTALL
-)
+CAPTURE_EXPRESSION = r"(.*?)(%s)(.*?)|(.+?)\Z" % ("|".join(CAPTURE_BLOCKS),)
+CAPTURE_REGEX = re.compile(CAPTURE_EXPRESSION, re.MULTILINE | re.DOTALL)
 
-END_BLOCK_EXPRESSION_REGEX = re.compile("end(for|while|if|with|try)$")
+END_BLOCK_EXPRESSION_REGEX = re.compile(
+    r"end(for|while|if|with|try|match|case)$"
+)
 BLOCK_EXPRESSION_REGEX = re.compile(
-    "(for|while|(el)?if|with)\s|(try|else|finally)\s*:?|except(\s*:|\s)"
+    r"(for|while|(el)?if|with|case|match)\s|(try|else|finally)\s*:?|except(\s*:|\s)"
 )
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
-WHITESPACE_BYTES = frozenset(b" \t\n\r\x0b\x0c") | {32, 8, 9, 10, 11, 12, 13}
+WHITESPACE_CHARS = frozenset(" \t\n\r\x0b\x0c")
 
 SCRIPT_PATH = os.path.abspath(__file__)
 
 
-@lru_cache()
+@functools.lru_cache()
 def compile_template(path):
     """
     Convert template located at `path` to Python code object. On Python
     versions 3.2 and up, calls to this function are cached with
     functools.lru_cache.
     """
-    with open(path, "rb") as iostream:
+    with open(path) as iostream:
         template_source = iostream.read()
 
     block_counts = collections.defaultdict(int)
@@ -90,6 +74,18 @@ def compile_template(path):
         """
         python_source.append(" " * depth + text)
 
+    def add_raw_text(text):
+        """
+        Helper function for inserting raw text into the generated script.
+        """
+        if block_counts["match"] <= block_counts["case"]:
+            add_line("_template_output.append(" + repr(text) + ")")
+        elif not text.isspace():
+            raise SyntaxError(
+                'Text cannot appear inside of a "match" block unless it is'
+                ' also inside a "case" block'
+            )
+
     # This could be made more efficient by complicating the regular expressions
     # and using named capture groups to avoid needlessly modifying strings and
     # checking characters, but I don't think the additional complexity is worth
@@ -99,35 +95,37 @@ def compile_template(path):
         if raw_block:
             first_bracket_offset = 0
             last_bracket_position = None
-            if (raw_block[0] in WHITESPACE_BYTES or
-              raw_block[-1] in WHITESPACE_BYTES):
-                first_bracket_offset = raw_block.index(b"{")
-                last_bracket_offset = raw_block.rindex(b"}")
+            if (raw_block[0] in WHITESPACE_CHARS or
+              raw_block[-1] in WHITESPACE_CHARS):
+                first_bracket_offset = raw_block.index("{")
+                last_bracket_offset = raw_block.rindex("}")
                 block = raw_block.strip()
             else:
                 block = raw_block
 
             # Comment block
-            if block[:1] == b"#":
-                add_line("_template_output.extend((%r, %r))" % (before, after))
+            if block[:2] == "{#":
+                if before:
+                    add_raw_text(before)
+
                 continue
 
             # Executable block
             if before:
-                before = before.decode("utf-8")
-                add_line("_template_output.append(" + repr(before) + ")")
+                add_raw_text(before)
 
-            contents = block[3:-3].replace(b"\n", b" ").strip().decode("utf-8")
+            contents = block[3:-3].replace("\n", " ").strip()
 
             # Statement block
-            if block[1:2] == b"%":
+            if block[1:2] == "%":
                 if BLOCK_EXPRESSION_REGEX.match(contents):
                     if not contents.endswith(":"):
                         contents += ":"
-                    if contents.startswith(("elif", "else", "except", "finally")):
+                    if contents.startswith(("elif", "else", "except",
+                      "finally")):
                         depth -= 1
                     else:
-                        block_name = contents.split()[0]
+                        block_name = contents.split()[0].rstrip(":")
                         block_counts[block_name] += 1
                     add_line(contents)
                     depth += 1
@@ -153,13 +151,12 @@ def compile_template(path):
                 #     TypeError: 'x' is an invalid keyword argument for ...
                 #
                 contents = "str((" + contents + "))"
-                if block[1:2] == b"{":
+                if block[1:2] == "{":
                     contents = "_template_escaper(" + contents + ")"
                 add_line("_template_output.append(" + contents + ")")
 
             if after:
-                after = after.decode("utf-8")
-                add_line("_template_output.append(" + repr(after) + ")")
+                add_raw_text(after)
 
             # Incremental counting of line numbers would probably be more
             # efficient, but bytes.count is implemented in C, and I don't see
@@ -169,11 +166,10 @@ def compile_template(path):
             block_start += first_bracket_offset
             block_end = last_bracket_position or block_end
             width = block_end - block_start
-            lineno = template_source.count(b"\n", None, block_start) + 1
+            lineno = template_source.count("\n", None, block_start) + 1
             span_map[len(python_source)] = (lineno, block_start, width)
 
         else:
-            tail = tail.decode("utf-8")
             add_line("_template_output.append(" + repr(tail) + ")")
 
     if depth:
@@ -204,9 +200,9 @@ def compile_template(path):
             # that's actually in the map is found.
             if e_lineno in span_map:
                 error.lineno, true_offset, _ = span_map[e_lineno]
-                nl = template_source.index(b"\n", true_offset)
+                nl = template_source.index("\n", true_offset)
                 nl = None if nl < 0 else nl
-                error.text = template_source[true_offset:nl].decode("utf-8")
+                error.text = template_source[true_offset:nl]
                 break
             else:
                 e_lineno -= 1
