@@ -13,7 +13,7 @@ from html import escape as html_escape
 __all__ = [
     "OPEN_TAGS", "CLOSE_TAGS", "CAPTURE_BLOCKS", "CAPTURE_EXPRESSION",
     "CAPTURE_REGEX", "END_BLOCK_EXPRESSION_REGEX", "BLOCK_EXPRESSION_REGEX",
-    "TEMPLATE_PATH_PREFIX", "WHITESPACE_CHARS", "SCRIPT_PATH",
+    "TEMPLATE_PATH_PREFIX", "SCRIPT_PATH",
     "compile_template", "template_traceback", "template_to_function",
     "html_escape"
 ]
@@ -43,7 +43,6 @@ BLOCK_EXPRESSION_REGEX = re.compile(
 )
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
-WHITESPACE_CHARS = frozenset(" \t\n\r\x0b\x0c")
 
 SCRIPT_PATH = os.path.abspath(__file__)
 
@@ -95,8 +94,7 @@ def compile_template(path):
         if raw_block:
             first_bracket_offset = 0
             last_bracket_position = None
-            if (raw_block[0] in WHITESPACE_CHARS or
-              raw_block[-1] in WHITESPACE_CHARS):
+            if raw_block[0].isspace() or raw_block[-1].isspace():
                 first_bracket_offset = raw_block.index("{")
                 last_bracket_offset = raw_block.rindex("}")
                 block = raw_block.strip()
