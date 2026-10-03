@@ -7,9 +7,6 @@ import re
 import sys
 import traceback
 
-from html import escape as html_escape
-
-
 __all__ = [
     "OPEN_TAGS", "CLOSE_TAGS", "CAPTURE_BLOCKS", "CAPTURE_EXPRESSION",
     "CAPTURE_REGEX", "END_BLOCK_EXPRESSION_REGEX", "BLOCK_EXPRESSION_REGEX",
@@ -209,7 +206,7 @@ def compile_template(path):
         raise
 
 
-def template_to_function(path, escaper=html_escape):
+def template_to_function(path, escaper=html.escape):
     """
     Convert template into a callable function. By default, the template output
     will be made HTML-safe, but the content escape method can be changed by
