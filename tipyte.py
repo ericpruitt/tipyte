@@ -43,7 +43,7 @@ END_BLOCK_EXPRESSION_REGEX = re.compile(
     r"end(for|while|if|with|try|match|case)$"
 )
 BLOCK_EXPRESSION_REGEX = re.compile(
-    r"(for|while|(el)?if|with|case|match)\s|(try|else|finally)\s*:?|except(\s*:|\s|\s*$)"
+    r"(for|while|(el)?if|with)\s|(try|else|finally)\s*:?|except(\s*:|\s|\s*$)|(case|match)\s(?!=)"
 )
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
