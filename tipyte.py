@@ -43,7 +43,40 @@ END_BLOCK_EXPRESSION_REGEX = re.compile(
     r"end(for|while|if|with|try|match|case)$"
 )
 BLOCK_EXPRESSION_REGEX = re.compile(
-    r"(for|while|(el)?if|with)\s|(try|else|finally)\s*:?|except(\s*:|\s|\s*$)|(case|match)\s(?!=)"
+    r"""
+    # Keywords that MUST be followed by something.
+    (
+        for
+        |
+        while
+        |
+        (el)?if
+        |
+        with
+    )\s
+    |
+    # "case" and "match" MUST be followed by something, but if they are
+    # followed by an equal sign, that means they are part of an expression
+    # rather than a statement.
+    (
+        case
+        |
+        match
+    )\b(?!\s*=)
+    |
+    # Keywords that are NEVER followed by anything.
+    (
+        try
+        |
+        else
+        |
+        finally
+    )\b\s*:?
+    |
+    # Keywords that MAY be followed by something.
+    except(\s|:|$)
+    """,
+    re.VERBOSE
 )
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
