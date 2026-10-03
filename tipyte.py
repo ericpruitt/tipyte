@@ -8,11 +8,18 @@ import sys
 import traceback
 
 __all__ = [
-    "OPEN_TAGS", "CLOSE_TAGS", "CAPTURE_BLOCKS", "CAPTURE_EXPRESSION",
-    "CAPTURE_REGEX", "END_BLOCK_EXPRESSION_REGEX", "BLOCK_EXPRESSION_REGEX",
-    "TEMPLATE_PATH_PREFIX", "SCRIPT_PATH",
-    "compile_template", "template_traceback", "template_to_function",
-    "html_escape"
+    "OPEN_TAGS",
+    "CLOSE_TAGS",
+    "CAPTURE_BLOCKS",
+    "CAPTURE_EXPRESSION",
+    "CAPTURE_REGEX",
+    "END_BLOCK_EXPRESSION_REGEX",
+    "BLOCK_EXPRESSION_REGEX",
+    "TEMPLATE_PATH_PREFIX",
+    "SCRIPT_PATH",
+    "compile_template",
+    "template_traceback",
+    "template_to_function",
 ]
 
 OPEN_TAGS = [
