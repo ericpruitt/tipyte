@@ -162,9 +162,14 @@ def compile_template(path):
                 pass
 
             elif marker == STATEMENT_MARKER:
-                string_fd = io.StringIO(contents)
-                tokens = list(tokenize.generate_tokens(string_fd.readline))
-                first = tokens[0].string
+                try:
+                    string_fd = io.StringIO(contents)
+                    tokens = list(tokenize.generate_tokens(string_fd.readline))
+                    first = tokens[0].string
+                except tokenize.TokenError as error:
+                    raise SyntaxError(
+                        error.args[0], (path, lineno, None, None)
+                    )
 
                 if any(map(lambda x: x.string == ";", tokens)):
                     raise SyntaxError(
