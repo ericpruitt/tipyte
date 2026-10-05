@@ -159,8 +159,7 @@ def compile_template(path):
             marker = tag[1]
 
             if marker == COMMENT_MARKER:
-                for line in contents.splitlines() or ("", ):
-                    add_line("# " + line)
+                pass
 
             elif marker == STATEMENT_MARKER:
                 string_fd = io.StringIO(contents)
@@ -199,7 +198,6 @@ def compile_template(path):
                             (path, lineno, None, None)
                         )
 
-                    add_line("")  # Needed to keep the span map correct.
                     block_counts[first[3:]] -= 1
                     depth -= 1
                 else:
