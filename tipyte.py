@@ -11,33 +11,23 @@ import tokenize
 import traceback
 
 __all__ = [
-    "OPEN_TAGS",
-    "CLOSE_TAGS",
-    "BLOCK_KEYWORDS",
-    "END_BLOCK_KEYWORDS",
-    "CAPTURE_BLOCKS",
-    "CAPTURE_EXPRESSION",
-    "CAPTURE_REGEX",
-    "TEMPLATE_PATH_PREFIX",
-    "SCRIPT_PATH",
-    "compile_template",
     "template_traceback",
     "template_to_function",
 ]
 
-OPEN_TAGS = [
-    r"(?:{{|\s*{{-) ",
-    r"(?:{%|\s*{%-) ",
-    r"(?:{=|\s*{=-) ",
-    r"(?:{#|\s*{#-) ",
-]
-CLOSE_TAGS = [
-    r" (?:}}|-}}\s*)",
-    r" (?:%}|-%}\s*)",
-    r" (?:=}|-=}\s*)",
-    r" (?:#}|-#}\s*)",
+COMMENT_MARKER = "#"
+STATEMENT_MARKER = "%"
+VERBATIM_OUTPUT_MARKER = "="
+OUTPUT_MARKER = "{"
+
+TAG_PATTERNS = [
+    (r"(?:{{|\s*{{-) ", r" (?:}}|-}}\s*)"),  # Output block (escaped)
+    (r"(?:{%|\s*{%-) ", r" (?:%}|-%}\s*)"),  # Statement block
+    (r"(?:{=|\s*{=-) ", r" (?:=}|-=}\s*)"),  # Verbatim output block
+    (r"(?:{#|\s*{#-) ", r" (?:#}|-#}\s*)"),  # Comment block
 ]
 
+# These keywords mark the start of a new indented block.
 BLOCK_KEYWORDS = (
     "case",
     "elif",
@@ -51,6 +41,7 @@ BLOCK_KEYWORDS = (
     "while",
     "with",
 )
+# These are template-specific keywords that mark the end of an indented block.
 END_BLOCK_KEYWORDS = (
     "endcase",
     "endfor",
@@ -60,10 +51,20 @@ END_BLOCK_KEYWORDS = (
     "endwhile",
     "endwith",
 )
+# Sibling block keywords that are keywords that must appear after another,
+# related block keyword at the same level of indentation.
+SIBLING_BLOCK_KEYWORDS = (
+    "elif",
+    "else",
+    "except",
+    "finally",
+)
 
-CAPTURE_BLOCKS = (opn + ".*?" + cls for opn, cls in zip(OPEN_TAGS, CLOSE_TAGS))
-CAPTURE_EXPRESSION = r"(.*?)(%s)(.*?)|(.+?)\Z" % ("|".join(CAPTURE_BLOCKS),)
-CAPTURE_REGEX = re.compile(CAPTURE_EXPRESSION, re.MULTILINE | re.DOTALL)
+CAPTURE_BLOCKS = (f"{opn}.*?{cls}" for opn, cls in TAG_PATTERNS)
+CAPTURE_REGEX = re.compile(
+    rf"(.*?)({'|'.join(CAPTURE_BLOCKS)})(.*?)|(.+?)\Z",
+    re.MULTILINE | re.DOTALL,
+)
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
 
@@ -95,20 +96,21 @@ def soft_kw_as_var(tokens):
 @functools.lru_cache()
 def compile_template(path):
     """
-    Convert template located at `path` to Python code object. On Python
-    versions 3.2 and up, calls to this function are cached with
-    functools.lru_cache.
+    Convert template located at `path` to Python code object.
     """
     with open(path) as iostream:
         template_source = iostream.read()
 
     block_counts = collections.defaultdict(int)
     depth = 0
+    line_count = 0
+    count_cursor = 0
     span_map = dict()
     python_source = [
-        # As the template is parsed, a dictionary is generated that maps lines
-        # of the transpiled source to lines of the template and byte offsets
-        # where interpolated blocks start.
+        # As the template is parsed, a dictionary is generated and placed here,
+        # at the beginning of transpiled script, that maps lines of the
+        # transpiled source to lines of the template and byte offsets where
+        # interpolated tags start.
         "<Reserved for template offset table.>",
     ]
 
@@ -122,6 +124,9 @@ def compile_template(path):
         """
         Helper function for inserting raw text into the generated script.
         """
+        if not text:
+            return
+
         if block_counts["match"] <= block_counts["case"]:
             add_line("_template_output.append(" + repr(text) + ")")
         elif not text.isspace():
@@ -135,41 +140,38 @@ def compile_template(path):
     # checking characters, but I don't think the additional complexity is worth
     # it right now.
     for match in CAPTURE_REGEX.finditer(template_source):
-        before, raw_block, after, tail = match.groups()
-        if raw_block:
-            first_bracket_offset = 0
-            last_bracket_position = None
-            if raw_block[0].isspace() or raw_block[-1].isspace():
-                first_bracket_offset = raw_block.index("{")
-                last_bracket_offset = raw_block.rindex("}")
-                block = raw_block.strip()
-            else:
-                block = raw_block
+        before, tag, after, tail = match.groups()
 
-            # Comment block
-            if block[:2] == "{#":
-                if before:
-                    add_raw_text(before)
+        if tag:
+            add_raw_text(before)
 
-                continue
+            # These values are used to update the span map with the information
+            # needed to map transpiled lines to their location inside the
+            # template.
+            tag_start, tag_end = match.span(2)
+            tag_start += tag.index("{")
+            lineno = template_source.count("\n", None, tag_start) + 1
+            width = tag_end - tag_start
+            tag_start_line = len(python_source)
 
-            # Executable block
-            if before:
-                add_raw_text(before)
+            tag = tag.strip()
+            contents = tag[3:-3].strip()
+            marker = tag[1]
 
-            contents = block[3:-3].strip()
+            if marker == COMMENT_MARKER:
+                for line in contents.splitlines() or ("", ):
+                    add_line("# " + line)
 
-            # Statement block
-            if block[1] == "%":
+            elif marker == STATEMENT_MARKER:
                 string_fd = io.StringIO(contents)
                 tokens = list(tokenize.generate_tokens(string_fd.readline))
+                first = tokens[0].string
 
                 if any(map(lambda x: x.string == ";", tokens)):
                     raise SyntaxError(
-                        "Semicolons not allowed in statements or expressions"
+                        "Semicolons as line endings are not supported in tags",
+                        (path, lineno, None, None)
                     )
-
-                leader = tokens[0].string
 
                 # Strip out newline tokens. This makes it possible for template
                 # statements and expressions to span multiple lines without the
@@ -178,29 +180,32 @@ def compile_template(path):
                     t for t in tokens if t.string != "\n"
                 )
 
-                if leader in BLOCK_KEYWORDS and not soft_kw_as_var(tokens):
+                if first in BLOCK_KEYWORDS and not soft_kw_as_var(tokens):
                     if not contents.endswith(":"):
                         contents += ":"
 
-                    if leader in ("elif", "else", "except", "finally"):
+                    if first in SIBLING_BLOCK_KEYWORDS:
                         depth -= 1
                     else:
-                        block_counts[leader] += 1
+                        block_counts[first] += 1
 
                     add_line(contents)
+
                     depth += 1
-                elif leader in END_BLOCK_KEYWORDS:
-                    if contents != leader:
+                elif first in END_BLOCK_KEYWORDS:
+                    if contents != first:
                         raise SyntaxError(
-                            "\"end...\" blocks cannot contain other text"
+                            "Block end tags cannot contain other text",
+                            (path, lineno, None, None)
                         )
-                    block_counts[leader[3:]] -= 1
+
+                    add_line("")  # Needed to keep the span map correct.
+                    block_counts[first[3:]] -= 1
                     depth -= 1
                 else:
                     add_line(contents)
 
-            # Output block
-            else:
+            elif marker in (OUTPUT_MARKER, VERBATIM_OUTPUT_MARKER):
                 # Double parentheses ensures that something like "{{ x = 1 }}"
                 # produces a less confusing error:
                 #
@@ -214,34 +219,33 @@ def compile_template(path):
                 #       File "<stdin>", line 1, in <module>
                 #     TypeError: 'x' is an invalid keyword argument for ...
                 #
-                contents = "str((" + contents + "))"
-                if block[1] == "{":
-                    contents = "_template_escaper(" + contents + ")"
-                add_line("_template_output.append(" + contents + ")")
+                contents = f"str(({contents}))"
 
-            if after:
-                add_raw_text(after)
+                if tag[1] == OUTPUT_MARKER:
+                    contents = f"_template_escaper({contents})"
 
-            # Incremental counting of line numbers would probably be more
-            # efficient, but bytes.count is implemented in C, and I don't see
-            # this becoming a bottleneck any time soon considering all string
-            # manipulation done by the transpiler.
-            block_start, block_end = match.span(2)
-            block_start += first_bracket_offset
-            block_end = last_bracket_position or block_end
-            width = block_end - block_start
-            lineno = template_source.count("\n", None, block_start) + 1
-            span_map[len(python_source)] = (lineno, block_start, width)
+                add_line(f"_template_output.append({contents})")
 
-        else:
-            add_line("_template_output.append(" + repr(tail) + ")")
+            else:
+                # This should be unreachable.
+                raise RuntimeError(f"Unrecognized tag marker {marker!r}")
+
+            for entry in python_source[count_cursor:tag_start_line]:
+                line_count += 1 + entry.count("\n")
+
+            count_cursor = tag_start_line
+            span_map[line_count + 1] = (lineno, tag_start, width)
+
+        add_raw_text(after or tail)
 
     if depth:
         messages = list()
         text = "the number of %ss is %s than the number of %ss by %d"
+
         for block, count in block_counts.items():
             if not count:
                 continue
+
             difference = "less" if count < 0 else "greater"
             message = text % (block, difference, "end" + block, abs(count))
             messages.append(message)
@@ -249,29 +253,30 @@ def compile_template(path):
         all_messages = ", and ".join(messages).replace("t", "T", 1) + "."
         raise SyntaxError(all_messages)
 
-    python_source[0] = "_template_span_map[%r] = %r"  % (path, span_map)
+    python_source[0] = f"_template_span_map[{path!r}] = {span_map!r}"
     script = "\n".join(python_source)
 
     try:
         return compile(script, TEMPLATE_PATH_PREFIX + path, "exec")
     except SyntaxError as error:
-        e_lineno = error.lineno
         error.filename = path
         error.offset = -1
-        while e_lineno > 0:
+
+        while error.lineno > 0:
             # It's possible that a given line number isn't in the span map, so
             # the line number in the exception is decremented until a line
             # that's actually in the map is found.
-            if e_lineno in span_map:
-                error.lineno, true_offset, _ = span_map[e_lineno]
-                nl = template_source.index("\n", true_offset)
+            if error.lineno in span_map:
+                error.lineno, true_offset, _ = span_map[error.lineno]
+                nl = template_source.find("\n", true_offset)
                 nl = None if nl < 0 else nl
                 error.text = template_source[true_offset:nl]
                 break
             else:
-                e_lineno -= 1
+                error.lineno -= 1
         else:
             error.lineno = -1
+
         raise
 
 
@@ -348,7 +353,7 @@ def template_to_function(path, escaper=html.escape):
                 path = os.path.join(template_directory, path)
                 if raw:
                     if escaper:
-                        raise ValueError("Cannot set escaper when raw=False.")
+                        raise ValueError("Cannot set escaper when raw=True.")
                     with open(path) as iostream:
                         contents = iostream.read()
                     symbols["_template_output"].append(contents)
@@ -473,6 +478,7 @@ def template_traceback(templates_only=False):
     _, error, trace = sys.exc_info()
 
     frames = list()
+
     for frame in traceback.extract_tb(trace):
         path, lineno, call, text = frame
 
@@ -482,19 +488,23 @@ def template_traceback(templates_only=False):
             text = None
 
             try:
+                # Search backward in the span map until we find a line that
+                # exists since we don't have entries for every line.
+                while lineno and lineno not in span_map:
+                    lineno -= 1
+
+                lineno, start, width = span_map[lineno]
+
                 with open(path) as iostream:
-                    real_lineno, start, width = span_map[lineno]
-                    iostream.seek(start)
+                    iostream.read(start)  # Because "seek" is based on bytes.
                     text = iostream.read(width).replace("\n", " ").strip()
-                    lineno = real_lineno
             except Exception:
                 pass
 
             frames.append((path, lineno, call, text))
 
-        elif not templates_only:
-            if not os.path.samefile(path, SCRIPT_PATH):
-                frames.append(frame)
+        elif not templates_only and not os.path.samefile(path, SCRIPT_PATH):
+            frames.append(frame)
 
         trace = trace.tb_next
 
