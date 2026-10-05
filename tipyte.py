@@ -172,11 +172,12 @@ def compile_template(path):
                         (path, lineno, None, None)
                     )
 
-                # Strip out newline tokens. This makes it possible for template
-                # statements and expressions to span multiple lines without the
-                # user having to use parentheses or "\" at the end of a line.
+                # Strip out comments and newline tokens. This makes it possible
+                # for template statements and expressions to span multiple
+                # lines without the user having to use parentheses or "\" at
+                # the end of a line.
                 contents = tokenize.untokenize(
-                    t for t in tokens if t.string != "\n"
+                    t for t in tokens if not t.string.startswith(("#", "\n"))
                 )
 
                 if first in BLOCK_KEYWORDS and not soft_kw_as_var(tokens):
