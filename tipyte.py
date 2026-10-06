@@ -256,6 +256,12 @@ def compile_template(path):
 
         add_raw_text(after or tail)
 
+    if stack:
+        block, block_lineno = stack[-1]
+        raise SyntaxError(
+            f"Unclosed {block!r} block", (path, block_lineno, None, None)
+        )
+
     python_source[0] = f"_template_span_map[{path!r}] = {span_map!r}"
     script = "\n".join(python_source)
 
