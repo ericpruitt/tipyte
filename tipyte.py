@@ -132,7 +132,7 @@ def compile_template(path):
 
             raise SyntaxError(
                 'Non-blank text in "match" blocks must also be inside "case"'
-                " case blocks",
+                " blocks",
                 (path, lineno, None, None)
             )
 
