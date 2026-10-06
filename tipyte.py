@@ -59,6 +59,8 @@ SIBLING_BLOCK_KEYWORDS = (
     "finally",
 )
 
+NOOP_TOKENS = (tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE)
+
 CAPTURE_BLOCKS = (f"{opn}.*?{cls}" for opn, cls in TAG_PATTERNS)
 CAPTURE_REGEX = re.compile(
     rf"(.*?)({'|'.join(CAPTURE_BLOCKS)})(.*?)|(.+?)\Z",
@@ -162,32 +164,57 @@ def compile_template(path):
             marker = tag[1]
 
             if marker == COMMENT_MARKER:
-                pass
+                continue
 
-            elif marker == STATEMENT_MARKER:
-                try:
-                    string_fd = io.StringIO(contents)
-                    tokens = list(tokenize.generate_tokens(string_fd.readline))
-                    first = tokens[0].string
-                except tokenize.TokenError as error:
-                    raise SyntaxError(
-                        error.args[0], (path, lineno, None, None)
-                    )
+            if marker != STATEMENT_MARKER:
+                # Wrapping the expression for output tags serves two purposes.
+                # Double parentheses ensures that something like "{{ x = 1 }}"
+                # produces a less confusing error when it gets called as an
+                # argument to the "str" function:
+                #
+                #     >>> str((x = 1))
+                #       File "<stdin>", line 1
+                #         str((x=1))
+                #               ^
+                #     SyntaxError: invalid syntax
+                #     >>> str(x=1)
+                #     Traceback (most recent call last):
+                #       File "<stdin>", line 1, in <module>
+                #     TypeError: 'x' is an invalid keyword argument for ...
+                #
+                # It also ensures that tokenize.generate_tokens performs parses
+                # the tag contents as an expression rather than a statement.
+                # Without this, the tokenizer would complain about indent
+                # levels not matching when the tag contents span multiple
+                # lines. The newline at the end ensures that, if the contents
+                # ends with a "#", it won't comment out the closing
+                # parenthesis.
+                contents = f"({contents}\n)"
 
-                if any(map(lambda x: x.string == ";", tokens)):
-                    raise SyntaxError(
-                        "Semicolons as line endings are not supported in tags",
-                        (path, lineno, None, None)
-                    )
-
-                # Strip out comments and newline tokens. This makes it possible
-                # for template statements and expressions to span multiple
-                # lines without the user having to use parentheses or "\" at
-                # the end of a line.
-                contents = tokenize.untokenize(
-                    t for t in tokens if not t.string.startswith(("#", "\n"))
+            try:
+                string_fd = io.StringIO(contents)
+                tokens = list(tokenize.generate_tokens(string_fd.readline))
+                first = tokens[0].string
+            except tokenize.TokenError as error:
+                raise SyntaxError(
+                    error.args[0], (path, lineno, None, None)
                 )
 
+            if any(map(lambda x: x.string == ";", tokens)):
+                raise SyntaxError(
+                    "Semicolons as line endings are not supported in tags",
+                    (path, lineno, None, None)
+                )
+
+            # We strip out comments and newline tokens when parsing code inside
+            # of tags. This makes it possible for template statements and
+            # expressions to span multiple lines without the user having to use
+            # parentheses or "\" at the end of a line.
+            contents = tokenize.untokenize(
+                t for t in tokens if t.type not in NOOP_TOKENS
+            )
+
+            if marker == STATEMENT_MARKER:
                 if first in BLOCK_KEYWORDS and not soft_kw_as_var(tokens):
                     if first in SIBLING_BLOCK_KEYWORDS:
                         depth -= 1
@@ -224,20 +251,7 @@ def compile_template(path):
                     add_line(contents)
 
             elif marker in (OUTPUT_MARKER, VERBATIM_OUTPUT_MARKER):
-                # Double parentheses ensures that something like "{{ x = 1 }}"
-                # produces a less confusing error:
-                #
-                #     >>> str((x = 1))
-                #       File "<stdin>", line 1
-                #         str((x=1))
-                #               ^
-                #     SyntaxError: invalid syntax
-                #     >>> str(x=1)
-                #     Traceback (most recent call last):
-                #       File "<stdin>", line 1, in <module>
-                #     TypeError: 'x' is an invalid keyword argument for ...
-                #
-                contents = f"str(({contents}))"
+                contents = f"str({contents})"
 
                 if tag[1] == OUTPUT_MARKER:
                     contents = f"_template_escaper({contents})"
