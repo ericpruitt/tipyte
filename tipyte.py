@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import collections
 import functools
 import html
 import io
@@ -101,7 +100,7 @@ def compile_template(path):
     with open(path) as iostream:
         template_source = iostream.read()
 
-    block_counts = collections.defaultdict(int)
+    stack = []
     depth = 0
     line_count = 0
     count_cursor = 0
@@ -127,13 +126,17 @@ def compile_template(path):
         if not text:
             return
 
-        if block_counts["match"] <= block_counts["case"]:
-            add_line("_template_output.append(" + repr(text) + ")")
-        elif not text.isspace():
+        if stack and stack[-1][0] == "match":
+            if text.isspace():
+                return
+
             raise SyntaxError(
-                'Text cannot appear inside of a "match" block unless it is'
-                ' also inside a "case" block'
+                'Non-blank text in "match" blocks must also be inside "case"'
+                " case blocks",
+                (path, lineno, None, None)
             )
+
+        add_line("_template_output.append(" + repr(text) + ")")
 
     # This could be made more efficient by complicating the regular expressions
     # and using named capture groups to avoid needlessly modifying strings and
@@ -189,7 +192,7 @@ def compile_template(path):
                     if first in SIBLING_BLOCK_KEYWORDS:
                         depth -= 1
                     else:
-                        block_counts[first] += 1
+                        stack.append((first, lineno))
 
                     add_line(contents.removesuffix(":") + ":")
                     depth += 1
@@ -200,7 +203,22 @@ def compile_template(path):
                             (path, lineno, None, None)
                         )
 
-                    block_counts[first[3:]] -= 1
+                    if not stack:
+                        raise SyntaxError(
+                            f"Unpaired {first!r} tag",
+                            (path, lineno, None, None)
+                        )
+
+                    parent_block, parent_block_lineno = stack[-1]
+
+                    if parent_block != first[3:]:
+                        raise SyntaxError(
+                            f"{first!r} cannot close {parent_block!r} block"
+                            f" from line {parent_block_lineno}",
+                            (path, lineno, None, None)
+                        )
+
+                    stack.pop()
                     depth -= 1
                 else:
                     add_line(contents)
@@ -237,21 +255,6 @@ def compile_template(path):
             span_map[line_count + 1] = (lineno, tag_start, width)
 
         add_raw_text(after or tail)
-
-    if depth:
-        messages = list()
-        text = "the number of %ss is %s than the number of %ss by %d"
-
-        for block, count in block_counts.items():
-            if not count:
-                continue
-
-            difference = "less" if count < 0 else "greater"
-            message = text % (block, difference, "end" + block, abs(count))
-            messages.append(message)
-
-        all_messages = ", and ".join(messages).replace("t", "T", 1) + "."
-        raise SyntaxError(all_messages)
 
     python_source[0] = f"_template_span_map[{path!r}] = {span_map!r}"
     script = "\n".join(python_source)
