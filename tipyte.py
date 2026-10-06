@@ -63,8 +63,7 @@ NOOP_TOKENS = (tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE)
 
 CAPTURE_BLOCKS = (f"{opn}.*?{cls}" for opn, cls in TAG_PATTERNS)
 CAPTURE_REGEX = re.compile(
-    rf"(.*?)({'|'.join(CAPTURE_BLOCKS)})(.*?)|(.+?)\Z",
-    re.MULTILINE | re.DOTALL,
+    rf"(.*?)({'|'.join(CAPTURE_BLOCKS)})|(.+?)\Z", re.MULTILINE | re.DOTALL,
 )
 
 TEMPLATE_PATH_PREFIX = "/._/python-templates/"
@@ -145,7 +144,7 @@ def compile_template(path):
     # checking characters, but I don't think the additional complexity is worth
     # it right now.
     for match in CAPTURE_REGEX.finditer(template_source):
-        before, tag, after, tail = match.groups()
+        before, tag, tail = match.groups()
 
         if tag:
             add_raw_text(before)
@@ -268,7 +267,7 @@ def compile_template(path):
             count_cursor = tag_start_line
             span_map[line_count + 1] = (lineno, tag_start, width)
 
-        add_raw_text(after or tail)
+        add_raw_text(tail)
 
     if stack:
         block, block_lineno = stack[-1]
