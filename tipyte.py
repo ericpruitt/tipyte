@@ -186,16 +186,12 @@ def compile_template(path):
                 )
 
                 if first in BLOCK_KEYWORDS and not soft_kw_as_var(tokens):
-                    if not contents.endswith(":"):
-                        contents += ":"
-
                     if first in SIBLING_BLOCK_KEYWORDS:
                         depth -= 1
                     else:
                         block_counts[first] += 1
 
-                    add_line(contents)
-
+                    add_line(contents.removesuffix(":") + ":")
                     depth += 1
                 elif first in END_BLOCK_KEYWORDS:
                     if contents != first:
