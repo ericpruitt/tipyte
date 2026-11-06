@@ -224,6 +224,11 @@ def compile_template(path):
 
                     add_line(contents.removesuffix(":") + ":")
                     depth += 1
+
+                    # Insert "pass" statements so empty blocks don't cause
+                    # syntax errors.
+                    if first != "match":
+                        add_line("pass")
                 elif first in END_BLOCK_KEYWORDS:
                     if contents != first:
                         abort("Block end tags cannot contain other text")
