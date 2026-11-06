@@ -139,6 +139,13 @@ def compile_template(path):
 
         add_line("_template_output.append(" + repr(text) + ")")
 
+    def abort(text, n=None):
+        """
+        Raise a SyntaxError for the file at the current line or, if specified,
+        as user-provided line number.
+        """
+        raise SyntaxError(text, (path, lineno if n is None else n, None, None))
+
     # This could be made more efficient by complicating the regular expressions
     # and using named capture groups to avoid needlessly modifying strings and
     # checking characters, but I don't think the additional complexity is worth
@@ -195,15 +202,10 @@ def compile_template(path):
                 tokens = list(tokenize.generate_tokens(string_fd.readline))
                 first = tokens[0].string
             except tokenize.TokenError as error:
-                raise SyntaxError(
-                    error.args[0], (path, lineno, None, None)
-                )
+                abort(error.args[0])
 
             if any(map(lambda x: x.string == ";", tokens)):
-                raise SyntaxError(
-                    "Semicolons as line endings are not supported in tags",
-                    (path, lineno, None, None)
-                )
+                abort("Semicolons as line endings are not supported in tags")
 
             # We strip out comments and newline tokens when parsing code inside
             # of tags. This makes it possible for template statements and
@@ -224,24 +226,17 @@ def compile_template(path):
                     depth += 1
                 elif first in END_BLOCK_KEYWORDS:
                     if contents != first:
-                        raise SyntaxError(
-                            "Block end tags cannot contain other text",
-                            (path, lineno, None, None)
-                        )
+                        abort("Block end tags cannot contain other text")
 
                     if not stack:
-                        raise SyntaxError(
-                            f"Unpaired {first!r} tag",
-                            (path, lineno, None, None)
-                        )
+                        abort(f"Unpaired {first!r} tag")
 
                     parent_block, parent_block_lineno = stack[-1]
 
                     if parent_block != first[3:]:
-                        raise SyntaxError(
+                        abort(
                             f"{first!r} cannot close {parent_block!r} block"
-                            f" from line {parent_block_lineno}",
-                            (path, lineno, None, None)
+                            f" from line {parent_block_lineno}"
                         )
 
                     stack.pop()
@@ -271,9 +266,7 @@ def compile_template(path):
 
     if stack:
         block, block_lineno = stack[-1]
-        raise SyntaxError(
-            f"Unclosed {block!r} block", (path, block_lineno, None, None)
-        )
+        abort(f"Unclosed {block!r} block", block_lineno)
 
     python_source[0] = f"_template_span_map[{path!r}] = {span_map!r}"
     script = "\n".join(python_source)
